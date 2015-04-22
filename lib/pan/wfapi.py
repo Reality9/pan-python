@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2014 Kevin Steves <kevin.steves@pobox.com>
+# Copyright (c) 2013-2015 Kevin Steves <kevin.steves@pobox.com>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -73,8 +73,24 @@ _encoding = 'utf-8'
 _rfc2231_encode = False
 _wildfire_responses = {
     418: 'Unsupported File Type',
-    419: 'Sample Upload or Request Quota Exceeded',
-    422: 'URL Download Error',
+}
+
+BENIGN = 0
+MALWARE = 1
+GRAYWARE = 2
+PENDING = -100
+ERROR = -101
+UNKNOWN = -102
+INVALID = -103
+
+VERDICTS = {
+    BENIGN: ('benign', None),
+    MALWARE: ('malware', None),
+    GRAYWARE: ('grayware', None),
+    PENDING: ('pending', 'sample exists and verdict not known'),
+    ERROR: ('error', 'sample is in error state'),
+    UNKNOWN: ('unknown', 'sample does not exist'),
+    INVALID: ('invalid', 'hash is invalid'),
 }
 
 
@@ -224,7 +240,8 @@ class PanWFapi:
 
         content_type = self.__get_header(response, 'content-type')
         if not content_type:
-            self._msg = 'no content-type response header'
+            if self._msg is None:
+                self._msg = 'no content-type response header'
             return False
 
         if 'application/octet-stream' in content_type:
@@ -479,6 +496,66 @@ class PanWFapi:
         if not self.__set_response(response):
             raise PanWFapiError(self._msg)
 
+    def verdict(self,
+                hash=None):
+        self.__clear_response()
+
+        request_uri = '/publicapi/get/verdict'
+
+        query = {}
+        query['apikey'] = self.api_key
+        if hash is not None:
+            query['hash'] = hash
+
+        response = self.__api_request(request_uri=request_uri,
+                                      body=urlencode(query))
+        if not response:
+            raise PanWFapiError(self._msg)
+
+        if not self.__set_response(response):
+            raise PanWFapiError(self._msg)
+
+    def verdicts(self,
+                 hashes=None):
+        self.__clear_response()
+
+        request_uri = '/publicapi/get/verdicts'
+
+        form = _MultiPartFormData()
+        form.add_field('apikey', self.api_key)
+        if hashes is not None:
+            form.add_field('file', '\n'.join(hashes))
+
+        headers = form.http_headers()
+        body = form.http_body()
+
+        response = self.__api_request(request_uri=request_uri,
+                                      body=body, headers=headers)
+        if not response:
+            raise PanWFapiError(self._msg)
+
+        if not self.__set_response(response):
+            raise PanWFapiError(self._msg)
+
+    def verdicts_changed(self,
+                         date=None):
+        self.__clear_response()
+
+        request_uri = '/publicapi/get/verdicts/changed'
+
+        query = {}
+        query['apikey'] = self.api_key
+        if date is not None:
+            query['date'] = date
+
+        response = self.__api_request(request_uri=request_uri,
+                                      body=urlencode(query))
+        if not response:
+            raise PanWFapiError(self._msg)
+
+        if not self.__set_response(response):
+            raise PanWFapiError(self._msg)
+
     def sample(self,
                hash=None):
         self.__clear_response()
@@ -665,11 +742,11 @@ class _MultiPartFormData:
             import os
             seq = os.urandom(rand_bytes)
             self._log(DEBUG1, '_MultiPartFormData._boundary: %s',
-                     'using os.urandom')
+                      'using os.urandom')
         except NotImplementedError:
             import random
             self._log(DEBUG1, '_MultiPartFormData._boundary: %s',
-                     'using random')
+                      'using random')
             seq = bytearray()
             [seq.append(random.randrange(256)) for i in range(rand_bytes)]
 
@@ -723,15 +800,15 @@ class _FormDataPart:
 
     def _encode_field(self, name, value):
         self._log(DEBUG1, '_FormDataPart._encode_field: %s %s',
-                 type(name), type(value))
+                  type(name), type(value))
         if not _rfc2231_encode:
             s = '%s="%s"' % (name, value)
             self._log(DEBUG1, '_FormDataPart._encode_field: %s %s',
-                     type(s), s)
+                      type(s), s)
             if _isunicode(s):
                 s = s.encode('utf-8')
                 self._log(DEBUG1, '_FormDataPart._encode_field: %s %s',
-                         type(s), s)
+                          type(s), s)
             return s
 
         if not [ch for ch in '\r\n\\' if ch in value]:
@@ -750,7 +827,7 @@ class _FormDataPart:
             body = body.encode('latin-1')
         self.body = body
         self._log(DEBUG1, '_FormDataPart.add_body: %s %d',
-                 type(self.body), len(self.body))
+                  type(self.body), len(self.body))
 
     def serialize(self):
         bio = BytesIO()

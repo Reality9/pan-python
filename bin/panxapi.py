@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (c) 2013-2014 Kevin Steves <kevin.steves@pobox.com>
+# Copyright (c) 2013-2015 Kevin Steves <kevin.steves@pobox.com>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -24,6 +24,8 @@ import re
 import json
 import pprint
 import logging
+import ssl
+import signal
 
 libpath = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [os.path.join(libpath, os.pardir, 'lib')]
@@ -35,6 +37,12 @@ debug = 0
 
 
 def main():
+    try:
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    except AttributeError:
+        # Windows
+        pass
+
     set_encoding()
     options = parse_opts()
 
@@ -54,6 +62,12 @@ def main():
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
+    if options['cafile'] or options['capath']:
+        ssl_context = create_ssl_context(options['cafile'],
+                                         options['capath'])
+    else:
+        ssl_context = None
+
     try:
         xapi = pan.xapi.PanXapi(timeout=options['timeout'],
                                 tag=options['tag'],
@@ -65,8 +79,7 @@ def main():
                                 hostname=options['hostname'],
                                 port=options['port'],
                                 serial=options['serial'],
-                                cafile=options['cafile'],
-                                capath=options['capath'])
+                                ssl_context=ssl_context)
 
     except pan.xapi.PanXapiError as msg:
         print('pan.xapi.PanXapi:', msg, file=sys.stderr)
@@ -76,51 +89,62 @@ def main():
         print('xapi.__str__()===>\n', xapi, '\n<===',
               sep='', file=sys.stderr)
 
-    try:
-        if options['ad_hoc'] is not None:
-            action = 'ad_hoc'
-            xapi.ad_hoc(qs=options['ad_hoc'],
-                        xpath=options['xpath'],
-                        modify_qs=options['modify'])
-            print_status(xapi, action)
-            print_response(xapi, options)
+    extra_qs_used = False
 
+    try:
         if options['keygen']:
             action = 'keygen'
-            xapi.keygen()
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+            xapi.keygen(extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
             print('API key:  "%s"' % xapi.api_key)
 
         if options['show']:
             action = 'show'
-            xapi.show(xpath=options['xpath'])
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+            xapi.show(xpath=options['xpath'],
+                      extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['get']:
             action = 'get'
-            xapi.get(xpath=options['xpath'])
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+            xapi.get(xpath=options['xpath'],
+                     extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['delete']:
             action = 'delete'
-            xapi.delete(xpath=options['xpath'])
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+            xapi.delete(xpath=options['xpath'],
+                        extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['edit']:
             action = 'edit'
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
             xapi.edit(xpath=options['xpath'],
-                      element=options['element'])
+                      element=options['element'],
+                      extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['set']:
             action = 'set'
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
             xapi.set(xpath=options['xpath'],
-                     element=options['element'])
+                     element=options['element'],
+                     extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
@@ -129,6 +153,9 @@ def main():
             kwargs = {
                 'cmd': options['cmd'],
                 }
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+                kwargs['extra_qs'] = options['ad_hoc']
             if len(options['vsys']):
                 kwargs['vsys'] = options['vsys'][0]
             xapi.user_id(**kwargs)
@@ -137,52 +164,77 @@ def main():
 
         if options['move'] is not None:
             action = 'move'
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
             xapi.move(xpath=options['xpath'],
                       where=options['move'],
-                      dst=options['dst'])
+                      dst=options['dst'],
+                      extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['rename']:
             action = 'rename'
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
             xapi.rename(xpath=options['xpath'],
-                        newname=options['dst'])
+                        newname=options['dst'],
+                        extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['clone']:
             action = 'clone'
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
             xapi.clone(xpath=options['xpath'],
                        xpath_from=options['src'],
-                       newname=options['dst'])
+                       newname=options['dst'],
+                       extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['override']:
             action = 'override'
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
             xapi.override(xpath=options['xpath'],
-                          element=options['element'])
+                          element=options['element'],
+                          extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
         if options['export'] is not None:
             action = 'export'
-            xapi.export(category=options['export'],
-                        from_name=options['src'])
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+            if options['pcapid'] is not None:
+                xapi.export(category=options['export'],
+                            pcapid=options['pcapid'],
+                            search_time=options['stime'],
+                            serialno=options['serial'],
+                            extra_qs=options['ad_hoc'])
+            else:
+                xapi.export(category=options['export'],
+                            from_name=options['src'],
+                            extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
             if options['pcap_listing']:
-                pcap_listing(xapi, options)
-            save_pcap(xapi, options)
+                pcap_listing(xapi, options['export'])
+            save_attachment(xapi, options)
 
         if options['log'] is not None:
             action = 'log'
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
             xapi.log(log_type=options['log'],
                      nlogs=options['nlogs'],
                      skip=options['skip'],
                      filter=options['filter'],
                      interval=options['interval'],
-                     timeout=options['job_timeout'])
+                     timeout=options['job_timeout'],
+                     extra_qs=options['ad_hoc'])
             print_status(xapi, action)
             print_response(xapi, options)
 
@@ -192,6 +244,9 @@ def main():
                 'cmd': options['op'],
                 'cmd_xml': options['cmd_xml'],
                 }
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+                kwargs['extra_qs'] = options['ad_hoc']
             if len(options['vsys']):
                 kwargs['vsys'] = options['vsys'][0]
             xapi.op(**kwargs)
@@ -237,6 +292,9 @@ def main():
                 'interval': options['interval'],
                 'timeout': options['job_timeout'],
                 }
+            if options['ad_hoc'] is not None:
+                extra_qs_used = True
+                kwargs['extra_qs'] = options['ad_hoc']
             if options['commit_all']:
                 kwargs['action'] = 'all'
 
@@ -245,8 +303,16 @@ def main():
             print_status(xapi, action)
             print_response(xapi, options)
 
+        if not extra_qs_used and options['ad_hoc'] is not None:
+            action = 'ad_hoc'
+            xapi.ad_hoc(qs=options['ad_hoc'],
+                        xpath=options['xpath'],
+                        modify_qs=options['modify'])
+            print_status(xapi, action)
+            print_response(xapi, options)
+
     except pan.xapi.PanXapiError as msg:
-        print_status(xapi, action, msg)
+        print_status(xapi, action, str(msg))
         print_response(xapi, options)
         sys.exit(1)
 
@@ -292,6 +358,8 @@ def parse_opts():
         'filter': None,
         'interval': None,
         'job_timeout': None,
+        'stime': None,
+        'pcapid': None,
         'api_key': None,
         'cafile': None,
         'capath': None,
@@ -299,6 +367,7 @@ def parse_opts():
         'print_result': False,
         'print_python': False,
         'print_json': False,
+        'print_text': False,
         'cmd_xml': False,
         'pcap_listing': False,
         'recursive': False,
@@ -322,6 +391,7 @@ def parse_opts():
                     'cafile=', 'capath=', 'ls', 'serial=',
                     'group=', 'merge', 'nlogs=', 'skip=', 'filter=',
                     'interval=', 'timeout=',
+                    'stime=', 'pcapid=', 'text',
                     ]
 
     try:
@@ -422,6 +492,10 @@ def parse_opts():
             options['interval'] = arg
         elif opt == '--timeout':
             options['job_timeout'] = arg
+        elif opt == '--stime':
+            options['stime'] = arg
+        elif opt == '--pcapid':
+            options['pcapid'] = arg
         elif opt == '-h':
             options['hostname'] = arg
         elif opt == '-K':
@@ -438,6 +512,8 @@ def parse_opts():
             options['print_json'] = True
         elif opt == '-r':
             options['print_result'] = True
+        elif opt == '--text':
+            options['print_text'] = True
         elif opt == '-X':
             options['cmd_xml'] = True
         elif opt == '--ls':
@@ -470,14 +546,46 @@ def parse_opts():
             assert False, 'unhandled option %s' % opt
 
     if len(args) > 0:
-        s = get_element(args[0])
+        s = get_element(args.pop(0))
         options['xpath'] = s.rstrip('\r\n')
+        if len(args) > 0:
+            print('Extra options after xpath:', args, file=sys.stderr)
 
     if options['debug'] > 2:
         s = pprint.pformat(options, indent=4)
         print(s, file=sys.stderr)
 
+    if options['print_result'] and not (options['print_xml'] or
+                                        options['print_json'] or
+                                        options['print_python']):
+        options['print_xml'] = True
+
     return options
+
+
+def create_ssl_context(cafile, capath):
+    if (sys.version_info.major == 2 and sys.hexversion >= 0x02070900 or
+            sys.version_info.major == 3 and sys.hexversion >= 0x03020000):
+        context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+        context.options |= ssl.OP_NO_SSLv2
+        context.options |= ssl.OP_NO_SSLv3
+        context.verify_mode = ssl.CERT_REQUIRED
+        # added 3.4
+        if hasattr(context, 'check_hostname'):
+            context.check_hostname = True
+        try:
+            context.load_verify_locations(cafile=cafile, capath=capath)
+        except Exception as e:
+            print('cafile or capath invalid: %s' % e, file=sys.stderr)
+            sys.exit(1)
+
+        return context
+
+    print('Warning: Python %d.%d: cafile and capath ignored' %
+          (sys.version_info.major, sys.version_info.minor),
+          file=sys.stderr)
+
+    return None
 
 
 def get_vsys(s):
@@ -535,11 +643,35 @@ def print_status(xapi, action, exception_msg=None):
         code = ''
     if xapi.status is not None:
         print(': %s%s' % (xapi.status, code), end='', file=sys.stderr)
-    if exception_msg is not None and str(exception_msg):
-        print(': "%s"' % exception_msg, end='', file=sys.stderr)
+    if exception_msg is not None and exception_msg:
+        print(': "%s"' % exception_msg.rstrip(), end='', file=sys.stderr)
     elif xapi.status_detail is not None:
-        print(': "%s"' % xapi.status_detail, end='', file=sys.stderr)
+        print(': "%s"' % xapi.status_detail.rstrip(), end='', file=sys.stderr)
     print(file=sys.stderr)
+
+
+def xml_python(xapi, result=False):
+    xpath = None
+    if result:
+        if (xapi.element_result is None or
+                not len(xapi.element_result)):
+            return None
+        elem = xapi.element_result
+        # select all child elements
+        xpath = '*'
+    else:
+        if xapi.element_root is None:
+            return None
+        elem = xapi.element_root
+
+    try:
+        conf = pan.config.PanConfig(config=elem)
+    except pan.config.PanConfigError as msg:
+        print('pan.config.PanConfigError:', msg, file=sys.stderr)
+        sys.exit(1)
+
+    d = conf.python(xpath)
+    return d
 
 
 def print_response(xapi, options):
@@ -552,36 +684,29 @@ def print_response(xapi, options):
             print(s)
 
     if options['print_python'] or options['print_json']:
-        if options['print_result']:
-            if (xapi.element_result is None or
-                    not len(xapi.element_result)):
-                return
-            elem = list(xapi.element_result)[0]
-        else:
-            if xapi.element_root is None:
-                return
-            elem = xapi.element_root
-
-        try:
-            conf = pan.config.PanConfig(config=elem)
-        except pan.config.PanConfigError as msg:
-            print('pan.config.PanConfigError:', msg, file=sys.stderr)
-            sys.exit(1)
-
-        d = conf.python()
-
+        d = xml_python(xapi, options['print_result'])
         if d:
             if options['print_python']:
                 print('var1 =', pprint.pformat(d))
             if options['print_json']:
                 print(json.dumps(d, sort_keys=True, indent=2))
 
+    if options['print_text'] and xapi.text_document is not None:
+        print(xapi.text_document, end='')
 
-def save_pcap(xapi, options):
-    if xapi.export_result is None or options['src'] is None:
+
+def save_attachment(xapi, options):
+    if xapi.export_result is None:
         return
 
-    src_dir, src_file = os.path.split(options['src'])
+    if options['src'] is not None:
+        # pcap
+        src_dir, src_file = os.path.split(options['src'])
+    else:
+        # 6.0 threat-pcap
+        # device-state
+        src_dir = None
+        src_file = xapi.export_result['file']
 
     path = ''
     path_done = False
@@ -622,15 +747,16 @@ def save_pcap(xapi, options):
           file=sys.stderr)
 
 
-def pcap_listing(xapi, options):
-    d = xapi.xml_python(result=True)
+def pcap_listing(xapi, category):
+    d = xml_python(xapi, result=True)
 
-    if d and 'pcap-listing' in d and 'category' in d['pcap-listing']:
-        pcap_listing = d['pcap-listing']
-        category = pcap_listing['category']
-        if 'file' in pcap_listing:
+    if d and 'dir-listing' in d:
+        pcap_listing = d['dir-listing']
+        if pcap_listing is None:
+            print('No %s directories' % category)
+        elif 'file' in pcap_listing:
             file = pcap_listing['file']
-            if type(file) == type(''):
+            if isinstance(file, str):
                 file = [file]
             size = len(file)
             print('%d %s files:' % (size, category))
@@ -638,7 +764,7 @@ def pcap_listing(xapi, options):
                 print('    %s' % item)
         elif 'dir' in pcap_listing:
             dir = pcap_listing['dir']
-            if type(dir) == type(''):
+            if isinstance(dir, str):
                 dir = [dir]
             size = len(dir)
             print('%d %s directories:' % (size, category))
@@ -692,7 +818,7 @@ def usage():
     --ad-hoc query        perform ad hoc request
     --modify              insert known fields in ad hoc query
     -o cmd                execute operational command
-    --export category     export PCAP files
+    --export category     export files
     --log log-type        retrieve log files
     --src src             clone source node xpath
                           export source file/path/directory
@@ -709,7 +835,7 @@ def usage():
     -h hostname
     -P port               URL port number
     --serial number       serial number for Panorama redirection/
-                          commit-all
+                          commit-all/threat-pcap
     --group name          device group for commit-all
     --merge               merge with candidate for commit-all
     --nlogs num           retrieve num logs
@@ -717,13 +843,16 @@ def usage():
     --filter filter       log selection filter
     --interval seconds    log/commit job query interval
     --timeout seconds     log/commit job query timeout
+    --stime time          search time for threat-pcap
+    --pcapid id           threat-pcap ID
     -K api_key
     -x                    print XML response to stdout
     -p                    print XML response in Python to stdout
     -j                    print XML response in JSON to stdout
     -r                    print result content when printing response
+    --text                print text response to stdout
     -X                    convert text command to XML
-    --ls                  print formatted pcap-listing to stdout
+    --ls                  print formatted PCAP listing to stdout
     --recursive           recursive export
     -H                    use http URL scheme (default https)
     -G                    use HTTP GET method (default POST)

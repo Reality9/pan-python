@@ -2,7 +2,7 @@
  NOTE: derived from documentation in PAN-perl
 
  Copyright (c) 2011 Palo Alto Networks, Inc. <info@paloaltonetworks.com>
- Copyright (c) 2013 Kevin Steves <kevin.steves@pobox.com>
+ Copyright (c) 2013-2015 Kevin Steves <kevin.steves@pobox.com>
 
  Permission to use, copy, modify, and distribute this software for any
  purpose with or without fee is hereby granted, provided that the above
@@ -50,7 +50,7 @@ SYNOPSIS
     --ad-hoc query        perform ad hoc request
     --modify              insert known fields in ad hoc query
     -o cmd                execute operational command
-    --export category     export PCAP files
+    --export category     export files
     --log log-type        retrieve log files
     --src src             clone source node xpath
                           export source file/path/directory
@@ -67,7 +67,7 @@ SYNOPSIS
     -h hostname
     -P port               URL port number
     --serial number       serial number for Panorama redirection/
-                          commit-all
+                          commit-all/threat-pcap
     --group name          device group for commit-all
     --merge               merge with candidate for commit-all
     --nlogs num           retrieve num logs
@@ -75,13 +75,16 @@ SYNOPSIS
     --filter filter       log selection filter
     --interval seconds    log/commit job query interval
     --timeout seconds     log/commit job query timeout
+    --stime time          search time for threat-pcap
+    --pcapid id           threat-pcap ID
     -K api_key
     -x                    print XML response to stdout
     -p                    print XML response in Python to stdout
     -j                    print XML response in JSON to stdout
     -r                    print result content when printing response
+    --text                print text response to stdout
     -X                    convert text command to XML
-    --ls                  print formatted pcap-listing to stdout
+    --ls                  print formatted PCAP listing to stdout
     --recursive           recursive export
     -H                    use http URL scheme (default https)
     -G                    use HTTP GET method (default POST)
@@ -204,12 +207,17 @@ DESCRIPTION
   **--vsys** options specified.
 
  ``--ad-hoc`` *query*
-  Perform an ad hoc (custom) API request using the query string specified.
+
+  When no other API request is specified, this performs an ad hoc
+  (custom) API request using the **query** string specified.  When
+  other API requests are specified, this is used to modify (replace)
+  and augment (add to) the standard parameters in the request.
+
   Query string must be field=value pairs separated by ampersand (**&**).
   The string will be URL-encoded before performing the API request.
 
   **--ad-hoc** can be used to construct API requests that are not
-  directly supported by PanXapi.
+  directly supported by **pan.xapi** or **panxapi.py**.
 
  ``--modify``
   Modify an ad hoc query by inserting known fields.  By default
@@ -232,13 +240,17 @@ DESCRIPTION
   *stdin*.
 
  ``--export`` *category*
-  Perform the ``action=export`` export packet capture (PCAP) API request.
+  Perform the ``type=export`` export file API request.
 
-  *category* specifies the type of PCAP to export or list:
+  *category* specifies the type of file to export or list:
 
   - application-pcap
   - threat-pcap
   - filter-pcap
+  - dlp-pcap
+  - configuration
+  - certificate
+  - *others* (see XML API Reference)
 
  ``--log`` *log-type*
   Perform the ``type=log`` retrieve log API request with the **log-type**
@@ -263,7 +275,7 @@ DESCRIPTION
   The **src** argument is used to specify:
 
   - date directory for application-pcap and threat-pcap PCAP file listing
-  - PCAP file path for exporting application-pcap and threat-pcap
+  - PCAP file path for exporting application-pcap, threat-pcap and dlp-pcap
   - file name for exporting filter-pcap
 
  ``--dst`` *dst*
@@ -386,6 +398,12 @@ DESCRIPTION
 
   The default is to try forever.
 
+ ``--stime`` *time*
+  Specify the search time for threat-pcap export.
+
+ ``--pcapid`` *id*
+  Specify the PCAP ID for threat-pcap export.
+
  ``-K`` *api_key*
   Specify the **api_key** used in API requests.  This is not required to
   perform API requests if the **api_username** and **api_password** are
@@ -404,7 +422,13 @@ DESCRIPTION
   Print result content when printing the response (removes outer
   <response><result> elements).  If a <result> element is not present
   this prints the entire response.  This option applies to **-x**,
-  **-p** and **-j** response output.
+  **-p** and **-j** response output; if none of these options are
+  specified **-x** is implied.
+
+ ``--text``
+  Print text (response content-type is text/plain) to *stdout*.
+
+  This is used for retrieving exported response pages.
 
  ``-X``
   Convert a CLI-style *cmd* argument to XML.  This works by converting all
@@ -447,17 +471,18 @@ DESCRIPTION
   Specify the ``timeout`` value for urlopen().
 
  ``--cafile`` *path*
-  Specify the ``cafile`` value for urlopen().  ``cafile`` is a file
-  containing CA certificates to be used for SSL server certificate
-  verification. By default the SSL server certificate is not verified.
-  ``--cafile`` is only supported in Python version 3.2 and greater.
+  Specify the ``cafile`` value for HTTPS requests.  ``cafile`` is a
+  file containing CA certificates to be used for SSL server
+  certificate verification. By default the SSL server certificate is
+  not verified.  ``--cafile`` is supported starting in Python versions
+  2.7.9 and 3.2.
 
  ``--capath`` *path*
-  Specify the ``capath`` value for urlopen().  ``capath`` is a
+  Specify the ``capath`` value for HTTPS requests.  ``capath`` is a
   directory of hashed certificate files to be used for SSL server
   certificate verification. By default the SSL server certificate is
-  not verified.
-  ``--capath`` is only supported in Python version 3.2 and greater.
+  not verified.  ``--cafile`` is supported starting in Python versions
+  2.7.9 and 3.2.
 
  ``--version``
   Display version.
@@ -474,7 +499,7 @@ FILES
 =====
 
  ``.panrc``
-  .panrc file.  See PanXapi documentation for .panrc format.
+  .panrc file.
 
 EXIT STATUS
 ===========
@@ -637,6 +662,22 @@ EXAMPLES
   $ panxapi.py -C '' --validate --sync
   commit: success: "Configuration is valid"
 
+ Export threat-pcap file on PAN-OS 6.0.
+ ::
+
+  $ panxapi.py --export threat-pcap --pcapid 1200628399744221211 \
+  > --serial 001609032345
+  export: success
+  exported threat-pcap: 1200628399744221211.pcap
+
+ Export certificate with additional parameters:
+ ::
+
+  $ panxapi.py --export certificate \
+  > --ad-hoc 'certificate-name=GlobalProtectCA&format=pem&include-key=yes&passphrase=paloalto'
+  export: success
+  exported certificate: globalprotectca.pem
+
  Print operational command variable using shell pipeline.
  ::
 
@@ -649,6 +690,9 @@ SEE ALSO
 ========
 
  pan.xapi, panconf.py
+
+ PAN-OS 6.1 XML API Reference
+  https://www.paloaltonetworks.com/documentation/61/pan-os.html
 
 AUTHORS
 =======

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (c) 2013-2014 Kevin Steves <kevin.steves@pobox.com>
+# Copyright (c) 2013-2015 Kevin Steves <kevin.steves@pobox.com>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -38,7 +38,12 @@ debug = 0
 
 
 def main():
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    try:
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    except AttributeError:
+        # Windows
+        pass
+
 #    set_encoding()
     options = parse_opts()
 
@@ -77,6 +82,8 @@ def main():
               sep='', file=sys.stderr)
 
     try:
+        hashes = process_hashes(options['hash'])
+
         if options['submit'] is not None:
             action = 'submit'
             kwargs = {}
@@ -108,10 +115,11 @@ def main():
         if options['report']:
             action = 'report'
             kwargs = {}
-            if options['hash'] is not None:
-                validate_hash(options['hash'])
-                kwargs['hash'] = options['hash']
-
+            if len(hashes) > 1:
+                print('Only 1 hash allowed for %s' % action, file=sys.stderr)
+                sys.exit(1)
+            if len(hashes) == 1:
+                kwargs['hash'] = hashes[0]
             if options['format'] is not None:
                 kwargs['format'] = options['format']
 
@@ -120,12 +128,32 @@ def main():
             print_response(wfapi, options)
             save_file(wfapi, options)
 
+        if options['verdict']:
+            kwargs = {}
+            if len(hashes) == 1:
+                action = 'verdict'
+                kwargs['hash'] = hashes[0]
+                wfapi.verdict(**kwargs)
+            elif len(hashes) > 1:
+                action = 'verdicts'
+                kwargs['hashes'] = hashes
+                wfapi.verdicts(**kwargs)
+            else:
+                action = 'verdict'
+                wfapi.verdict(**kwargs)
+
+            print_status(wfapi, action)
+            print_response(wfapi, options)
+            save_file(wfapi, options)
+
         if options['sample']:
             action = 'sample'
             kwargs = {}
-            if options['hash'] is not None:
-                validate_hash(options['hash'])
-                kwargs['hash'] = options['hash']
+            if len(hashes) > 1:
+                print('Only 1 hash allowed for %s' % action, file=sys.stderr)
+                sys.exit(1)
+            if len(hashes) == 1:
+                kwargs['hash'] = hashes[0]
 
             wfapi.sample(**kwargs)
             print_status(wfapi, action)
@@ -135,13 +163,26 @@ def main():
         if options['pcap']:
             action = 'pcap'
             kwargs = {}
-            if options['hash'] is not None:
-                validate_hash(options['hash'])
-                kwargs['hash'] = options['hash']
+            if len(hashes) > 1:
+                print('Only 1 hash allowed for %s' % action, file=sys.stderr)
+                sys.exit(1)
+            if len(hashes) == 1:
+                kwargs['hash'] = hashes[0]
             if options['platform'] is not None:
                 kwargs['platform'] = options['platform']
 
             wfapi.pcap(**kwargs)
+            print_status(wfapi, action)
+            print_response(wfapi, options)
+            save_file(wfapi, options)
+
+        if options['changed']:
+            action = 'verdicts_changed'
+            kwargs = {}
+            if options['date'] is not None:
+                kwargs['date'] = options['date']
+
+            wfapi.verdicts_changed(**kwargs)
             print_status(wfapi, action)
             print_response(wfapi, options)
             save_file(wfapi, options)
@@ -162,7 +203,36 @@ def main():
     sys.exit(0)
 
 
+def process_hashes(list):
+    stdin_char = '-'
+
+    hashes = []
+    for hash in list:
+        lines = []
+        if hash == stdin_char:
+            lines = sys.stdin.readlines()
+        else:
+            try:
+                f = open(hash)
+                lines = f.readlines()
+                f.close()
+            except IOError:
+                # only validate hash from command line
+                validate_hash(hash)
+                hashes.append(hash)
+        if len(lines) > 0:
+            [hashes.append(x.rstrip('\r\n')) for x in lines]
+
+    if debug > 1:
+        print('hashes:', len(hashes), file=sys.stderr)
+
+    return hashes
+
+
 def validate_hash(hash):
+    if debug > 0:
+        return
+
     if not (len(hash) == 32 or len(hash) == 64):
         print('hash length must be 32 (MD5) or 64 (SHA256)',
               file=sys.stderr)
@@ -173,12 +243,15 @@ def parse_opts():
     options = {
         'submit': None,
         'report': False,
+        'verdict': False,
         'sample': False,
         'pcap': False,
-        'hash': None,
+        'changed': False,
+        'hash': [],
         'platform': None,
         'testfile': False,
         'format': None,
+        'date': None,
         'dst': None,
         'api_key': None,
         'hostname': None,
@@ -197,9 +270,10 @@ def parse_opts():
 
     short_options = 'K:h:xpjHDt:T:'
     long_options = ['version', 'help',
-                    'submit=', 'report', 'sample', 'pcap',
+                    'submit=', 'report', 'verdict', 'sample',
+                    'pcap', 'changed',
                     'hash=', 'platform=', 'testfile',
-                    'format=', 'dst=',
+                    'format=', 'date=', 'dst=',
                     'http', 'nocacloud', 'cafile=', 'capath=',
                     ]
 
@@ -218,18 +292,24 @@ def parse_opts():
             options['submit'] = arg
         elif opt == '--report':
             options['report'] = True
+        elif opt == '--verdict':
+            options['verdict'] = True
         elif opt == '--sample':
             options['sample'] = True
         elif opt == '--pcap':
             options['pcap'] = True
+        elif opt == '--changed':
+            options['changed'] = True
         elif opt == '--hash':
-            options['hash'] = arg
+            options['hash'].append(arg)
         elif opt == '--platform':
             options['platform'] = arg
         elif opt == '--testfile':
             options['testfile'] = True
         elif opt == '--format':
             options['format'] = arg
+        elif opt == '--date':
+            options['date'] = arg
         elif opt == '--dst':
             options['dst'] = arg
         elif opt == '-K':
@@ -312,11 +392,11 @@ def print_status(wfapi, action, exception_msg=None):
 def print_response(wfapi, options):
     if wfapi.response_type is 'html' and wfapi.response_body is not None:
         if options['print_html']:
-            print(wfapi.response_body)
+            print(wfapi.response_body.rstrip())
 
     elif wfapi.response_type is 'xml' and wfapi.response_body is not None:
         if options['print_xml']:
-            print(wfapi.response_body)
+            print(wfapi.response_body.rstrip())
 
         if options['print_python'] or options['print_json']:
             if wfapi.xml_element_root is None:
@@ -401,12 +481,15 @@ def usage():
     usage = '''%s [options]
     --submit path|url     submit file or URL to WildFire for analysis
     --report              get WildFire report
+    --verdict             get WildFire sample verdict
     --sample              get WildFire sample file
     --pcap                get WildFire PCAP files
+    --changed             get changed verdicts
     --hash hash           query MD5 or SHA256 hash
     --platform id         platform ID for sandbox environment
     --testfile            get sample malware test file
     --format format       report output format
+    --date date           start date for changed verdicts (YYYY-MM-DD)
     --dst dst             save file to directory or path
     -K api_key            WildFire API key
     -h hostname           WildFire hostname

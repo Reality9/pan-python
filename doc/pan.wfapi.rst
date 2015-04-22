@@ -1,5 +1,5 @@
 ..
- Copyright (c) 2014 Kevin Steves <kevin.steves@pobox.com>
+ Copyright (c) 2014-2015 Kevin Steves <kevin.steves@pobox.com>
 
  Permission to use, copy, modify, and distribute this software for any
  purpose with or without fee is hereby granted, provided that the above
@@ -67,11 +67,14 @@ DESCRIPTION
  get previously uploaded sample   /publicapi/get/sample
  get sample PCAP                  /publicapi/get/pcap
  get sample analysis report       /publicapi/get/report
+ get sample verdict               /publicapi/get/verdict
+ get sample verdicts              /publicapi/get/verdicts
+ get verdicts changed             /publicapi/get/verdicts/changed
  get sample malware test file     /publicapi/test/pe
  ==============================   ========
 
-pan.wfapi Attributes
---------------------
+pan.wfapi Constants
+-------------------
 
  **__version__**
   pan package version string.
@@ -79,6 +82,13 @@ pan.wfapi Attributes
  **DEBUG1**, **DEBUG2**, **DEBUG3**
   Python ``logging`` module debug levels (see **Debugging and
   Logging** below).
+
+ **BENIGN**, **MALWARE**, **GRAYWARE**, **PENDING**, **ERROR**, **UNKNOWN**, **INVALID**
+  Constants for the integer verdict values.
+
+ **VERDICTS**
+  A dictionary which maps the integer verdict values to a tuple
+  of (name, description).
 
 
 pan.wfapi Constructor and Exception Class
@@ -170,6 +180,39 @@ report(hash=None, format=None)
  sample.  The sample can be specified by its MD5 or SHA256 hash.
  The report format can be ``xml`` or ``pdf``.  The default is ``xml``.
 
+verdict(hash=None)
+~~~~~~~~~~~~~~~~~~
+
+verdicts(hashes=None)
+~~~~~~~~~~~~~~~~~~~~~
+
+ The ``verdict()`` and ``verdicts()`` methods get the verdict(s) for
+ previously uploaded samples.  The sample can be specified by its MD5
+ or SHA256 hash.  The ``verdict()`` **hash** argument is a single hash
+ and the ``verdicts()`` **hashes** argument is a list of up to 500
+ hashes.
+
+ The result is an XML document with verdict represented as an integer:
+
+ =====  ========  ===========
+ Value  Verdict   Description
+ =====  ========  ===========
+ 0      benign
+ 1      malware
+ 2      grayware
+ -100   pending   sample exists and verdict not known
+ -101   error     sample is in error state
+ -102   unknown   sample does not exist
+ -103   invalid   hash is invalid (verdicts() method only)
+ =====  ========  ===========
+
+verdicts_changed(date=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ The ``verdicts_changed()`` method gets the hashes of samples whose
+ verdicts have changed within the last 30 days starting at the date
+ specified.  The format for the **date** argument is *YYYY-MM-DD*.
+
 pcap(hash=None, platform=None)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -223,6 +266,26 @@ http_code
  The ``http_code`` data attribute contains the HTTP response status
  code.
 
+ Status codes that can be returned include:
+
+ ===============================  ===========
+ HTTP status-code, reason-phrase  Description
+ ===============================  ===========
+ 401 Unauthorized                 API key invalid
+ 403 Forbidden                    Permission denied
+ 404 Not Found                    Report/sample/pcap not found
+ 405 Method Not Allowed           Must use method POST
+ 413 Request Entity Too Large     Sample size exceeds maximum
+ 418                              Invalid file type
+ 419 Quota Exceeded               Maximum daily uploads exceeded
+ 419 Quota Exceeded               Maximum daily queries exceeded
+ 420 Insufficient Arguments       Missing required request parameter
+ 421 Invalid Argument             Invalid request parameter
+ 422 URL Download Error           URL download error
+ 456                              Invalid request
+ 513                              File upload failed
+ ===============================  ===========
+
 http_reason
 ~~~~~~~~~~~
 
@@ -261,11 +324,11 @@ Debugging and Logging
   if options['debug']:
       logger = logging.getLogger()
       if options['debug'] == 3:
-          logger.setLevel(pan.xapi.DEBUG3)
+          logger.setLevel(pan.wfapi.DEBUG3)
       elif options['debug'] == 2:
-          logger.setLevel(pan.xapi.DEBUG2)
+          logger.setLevel(pan.wfapi.DEBUG2)
       elif options['debug'] == 1:
-          logger.setLevel(pan.xapi.DEBUG1)
+          logger.setLevel(pan.wfapi.DEBUG1)
 
       handler = logging.StreamHandler()
       logger.addHandler(handler)
@@ -286,6 +349,12 @@ SEE ALSO
 ========
 
  panwfapi.py
+
+ WildFire Administrator's Guide
+  https://www.paloaltonetworks.com/documentation/61/wildfire/wf_admin.pdf.html
+
+ WildFire API
+  https://www.paloaltonetworks.com/documentation/61/wildfire/wf_admin/wildfire-api.html
 
 AUTHORS
 =======

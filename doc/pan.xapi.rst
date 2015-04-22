@@ -2,7 +2,7 @@
  NOTE: derived from documentation in PAN-perl
 
  Copyright (c) 2011 Palo Alto Networks, Inc. <info@paloaltonetworks.com>
- Copyright (c) 2013-2014 Kevin Steves <kevin.steves@pobox.com>
+ Copyright (c) 2013-2015 Kevin Steves <kevin.steves@pobox.com>
 
  Permission to use, copy, modify, and distribute this software for any
  purpose with or without fee is hereby granted, provided that the above
@@ -70,8 +70,8 @@ DESCRIPTION
  - dynamic object update: ``type=user-id``
  - log retrieval: ``type=log``
 
-pan.xapi Attributes
--------------------
+pan.xapi Constants
+------------------
 
  **__version__**
   pan package version string.
@@ -97,8 +97,7 @@ class pan.xapi.PanXapi()
                          use_http=False,
                          use_get=False,
                          timeout=None,
-                         cafile=None,
-                         capath=None)
+                         ssl_context=None)
 
  **tag**
   .panrc tagname.
@@ -121,7 +120,7 @@ class pan.xapi.PanXapi()
 
  **api_username**, **api_password**, **hostname**, **port** and
  **api_key** can be passed as function arguments, or specified using a
- .panrc file as described below.  Either **api_username** and
+ .panrc file.  Either **api_username** and
  **api_password** or **api_key** must be provided.  When
  **api_username** and **api_password** are provided the **api_key**
  will be generated automatically using the API ``type=keygen`` request
@@ -149,17 +148,21 @@ class pan.xapi.PanXapi()
  **timeout**
   The ``timeout`` value for urlopen().
 
- **cafile**
-  The ``cafile`` value for urlopen().  ``cafile`` is a file containing
-  CA certificates to be used for SSL server certificate
-  verification. By default the SSL server certificate is not verified.
-  ``cafile`` is only supported in Python version 3.2 and greater.
+ **ssl_context**
+  An ssl.SSLContext() to use for HTTPS requests.  An SSL context holds
+  data such as SSL configuration options and certificates.
 
- **capath**
-  The ``capath`` value for urlopen().  ``capath`` is a directory of
-  hashed certificate files to be used for SSL server certificate
-  verification. By default the SSL server certificate is not verified.
-  ``capath`` is only supported in Python version 3.2 and greater.
+  This can be used to specify the ``cafile``, ``capath`` and other SSL
+  configuration options.
+
+  SSL contexts are supported starting in Python versions 2.7.9
+  and 3.2.
+
+  Starting with Python versions 2.7.9 and 3.4.3 SSL server certificate
+  verification is performed by default as described in PEP 476.
+  Because many PAN-OS systems use a self-signed certificate, pan.xapi
+  will disable the default starting with these versions.
+  **ssl_context** can be used to enable verification.
 
 exception pan.xapi.PanXapiError
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -182,12 +185,14 @@ keygen()
 ad_hoc(qs=None, xpath=None, modify_qs=False)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
- The ad_hoc() method performs an ad hoc (custom) API request using the query
- string (**qs**) specified.  Query string must be field=value pairs
- separated by ampersand (**&**).  The string will be URL-encoded before
- performing the API request.  **modify_qs** can be set to *True* to
- insert known fields into the query string; the known fields that can
- be inserted are:
+ The ad_hoc() method performs an ad hoc (custom) API request using
+ the request parameters in **qs**.
+
+ **qs** is either a query string with field=value pairs separated by
+ ampersand (**&**) or a dictionary of field, value pairs.  The
+ parameters will be URL-encoded before performing the API request.
+ **modify_qs** can be set to *True* to insert known fields into the
+ query string; the known fields that can be inserted are:
 
  - xpath
  - key (api_key)
@@ -354,6 +359,9 @@ op(cmd=None, vsys=None, cmd_xml=False)
 export(category=None, from_name=None)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+export(category=None, pcapid=None, search_time=None, serialno=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
  The export() method performs the ``type=export`` export file API
  request with the **category** argument and optional **from** argument
  (*from_name* function argument).  If the request is successful, the
@@ -368,8 +376,37 @@ export(category=None, from_name=None)
  **from_name** argument is used to specify the source for a file list
  or file export.
 
+Threat PCAP export
+##################
+
+ In PAN-OS 6.0 the extended packet capture feature was added and is
+ used for threat PCAPs.  As a result the **from** argument is no
+ longer used to specify the source file, and it is not possible to
+ obtain a file list.
+
+ The PCAP is specified using the **pcapid**, **search_time** and
+ **serialno** arguments.
+
+ **pcapid** is a unique numeric identifier for the extended PCAP
+ and is obtained from the **pcap_id** field in the THREAT log.
+
+ **search_time** is used to narrow the search for the PCAP ID and is
+ used to set a time window in the range *-5 minutes* to *+2 hours* of
+ the time specified.  The search time is typically set to the
+ **receive_time** field in the THREAT log.  The PAN-OS log time string
+ format is used, for example: 2015/01/20 10:51:09.
+
+ **search_time** is required in the API request; if not specified in
+ the export() method it will be set to the threat epoch time which is
+ part of the **pcapid**.
+
+ **serialno** is required when exporting from Panorama and is used to
+ specify the device of the PCAP.  It is also currently required when
+ exporting from firewall devices, however this requirement will be
+ removed in a future version of PAN-OS.
+
 log(self, log_type=None, nlogs=None, skip=None, filter=None, interval=None, timeout=None)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
  The log() method performs the ``type=log`` retrieve log API request
  with the **log-type** argument.
@@ -430,6 +467,17 @@ log(self, log_type=None, nlogs=None, skip=None, filter=None, interval=None, time
 
   The default is to try forever (**timeout** is set to *None* or 0).
 
+extra_qs=None
+~~~~~~~~~~~~~
+
+ All API methods have an additional argument that can be used to
+ modify (replace) and augment (add to) the standard parameters in the
+ request.
+
+ **extra_qs** is either a query string with field=value pairs
+ separated by ampersand (**&**) or a dictionary of field, value pairs.
+ The parameters will be URL-encoded before performing the API request.
+
 xml_root()
 ~~~~~~~~~~
 
@@ -466,17 +514,30 @@ status_detail
  received from the previous API request if one is available.  This is
  the value within a msg or line element.
 
+text_document
+~~~~~~~~~~~~~
+
+ The text_document data attribute contains the message body from the
+ previous API request when the response content-type is text/plain.
+
 export_result
 ~~~~~~~~~~~~~
 
  The export_result data attribute is a dictionary containing the
- result of the previous export() method request and contains the
+ result of the previous export() method request when the response
+ content-disposition is attachment.  The dictionary contains the
  following keys:
 
  - file: content-disposition response header filename
  - content: file contents
  - category: export category string
 
+element_root
+~~~~~~~~~~~~
+
+ The element_root data attribute is set to the root element of the
+ parsed response document XML tree; it is an **Element** object and is
+ set using etree.ElementTree.fromstring().
 
 Debugging and Logging
 ---------------------
@@ -543,73 +604,6 @@ get and show
  - return values only if the XPath results in exactly one node
  - return the result even if the matched node is a text node
 
-.panrc
-------
-
- .panrc files contain hostname, port, serial number, username,
- password and key variables for XML API access on PAN-OS firewalls.  A
- .panrc file consists of lines with the format:
- ::
-
-  varname[%tagname]=value
-
- Empty lines and lines starting with pound (**#**) are ignored.  For
- example:
- ::
-
-  api_username=api
-  api_password=admin
-  hostname=192.168.1.1
-
-  # admin API key
-  api_key=C2M1P2h1tDEz8zF3SwhF2dWC1gzzhnE1qU39EmHtGZM=
-  hostname=192.168.1.1
-
- *tagname* is optional and can be appended to *varname* with percent
- (**%**).  This form is used to allow a single .panrc file to contain
- variables for multiple systems.  The PanXapi constructor has an
- optional **tag** argument to specify that only a *varname* with the
- given *tagname* be used.  For example:
- ::
-
-  # no tag
-  hostname=172.29.9.122
-  api_username=admin
-  api_password=goodpw
-
-  # fw-test
-  hostname%fw-test=172.29.9.123
-  api_username%fw-test=admin
-  api_password%fw-test=admin
-
-  # eng-fw
-  hostname%eng-fw=172.29.9.124
-  api_key%eng-fw=C2M1P2h1tDEz8zF3SwhF2dWC1gzzhnE1qU39EmHtGZM=
-
- *tagname* must match the regular expression **/^[\w-]+$/** (1 or more
- alphanumeric characters plus "-" and "_").
-
-Recognized varname Values
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
- The following *varname* values are recognized:
-
- - **hostname**
- - **port**
- - **serial**
- - **api_username**
- - **api_password**
- - **api_key**
-
-.panrc Locations and Variable Merging
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
- A .panrc file can reside in the current working directory
- ($PWD/.panrc) and in the user's home directory ($HOME/.panrc).
- .panrc variables can also be specified in the PanXapi constructor.
- When a variable exists from multiple sources, the priority for
- merging variables is: __init__(), $PWD/.panrc, $HOME/.panrc.
-
 FILES
 =====
 
@@ -626,6 +620,9 @@ SEE ALSO
 ========
 
  panxapi.py
+
+ PAN-OS 6.1 XML API Reference
+  https://www.paloaltonetworks.com/documentation/61/pan-os.html
 
 AUTHORS
 =======
