@@ -64,6 +64,9 @@ DESCRIPTION
  ==============================   ========
  submit file                      /publicapi/submit/file
  submit URL                       /publicapi/submit/url
+ submit link                      /publicapi/submit/link
+ submit links                     /publicapi/submit/links
+ submit verdict change request    /publicapi/submit/change-request
  get previously uploaded sample   /publicapi/get/sample
  get sample PCAP                  /publicapi/get/pcap
  get sample analysis report       /publicapi/get/report
@@ -162,10 +165,41 @@ exception pan.wfapi.PanWFapiError
 pan.wfapi.PanWFapi Methods
 --------------------------
 
-submit(file=None, url=None)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+submit(file=None, url=None, links=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
- The ``submit()`` method submits a file or URL to WildFire for analysis.
+ The ``submit()`` method submits a file, URL or web page links to
+ WildFire for analysis.
+
+ **file**
+  Path to a file to submit for analysis.
+
+ **url**
+  URL to a file to submit for analysis.
+
+ **links**
+  List of links (URLs to web pages) to submit for analysis.
+  A maximum of 1,000 links can be submitted in a request.
+
+ You must submit one of **file**, **url** or **links**.
+
+change_request(hash=None, verdict=None, email=None, comment=None)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ The ``change_request()`` method is used to request a manual review
+ of a sample's verdict by the Threat Research Team.
+
+ **hash**
+  The SHA256 hash for the sample.
+
+ **verdict**
+  The suggested integer verdict.
+
+ **email**
+  Notification e-mail address.
+
+ **comment**
+  Explanation for the change request.  Can be up to 2048 bytes.
 
 sample(hash=None)
 ~~~~~~~~~~~~~~~~~
@@ -351,10 +385,10 @@ SEE ALSO
  panwfapi.py
 
  WildFire Administrator's Guide
-  https://www.paloaltonetworks.com/documentation/61/wildfire/wf_admin.pdf.html
+  https://www.paloaltonetworks.com/documentation/70/wildfire/wf_admin.html
 
  WildFire API
-  https://www.paloaltonetworks.com/documentation/61/wildfire/wf_admin/wildfire-api.html
+  https://www.paloaltonetworks.com/documentation/70/wildfire/wf_admin/use-the-wildfire-api.html
 
 AUTHORS
 =======

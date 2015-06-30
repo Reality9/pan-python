@@ -32,6 +32,8 @@ SYNOPSIS
 
  panwfapi.py [options]
     --submit path|url     submit file or URL to WildFire for analysis
+    --submit-link link    submit links to WildFire for analysis
+    --change-request      request review of sample's verdict
     --report              get WildFire report
     --verdict             get WildFire sample verdict
     --sample              get WildFire sample file
@@ -39,6 +41,9 @@ SYNOPSIS
     --changed             get changed verdicts
     --hash hash           query MD5 or SHA256 hash
     --platform id         platform ID for sandbox environment
+    --new-verdict verdict benign|malware|grayware
+    --email address       notification e-mail address
+    --comment comment     change request explanation
     --testfile            get sample malware test file
     --format format       report output format
     --date date           start date for changed verdicts (YYYY-MM-DD)
@@ -71,6 +76,21 @@ DESCRIPTION
   Submit a file or URL to WildFire for analysis.  Valid URL
   schemes for *url* are: **file**, **http**, **https** and **ftp**.
   A **file** *url* is the same as specifying *path*.
+
+ ``--submit-link`` *link*
+  Submit links to WildFire for analysis.  A link is a URL to a
+  web page.
+
+  *link* can be a single link or a path to a file containing multiple
+  newline delimited links or **-** to specify that links be read from
+  *stdin*.
+
+  A maximum of 1,000 links can be submitted in a request.
+
+ ``--change-request``
+  Request  a manual review
+  of a sample's verdict by the Threat Research Team.  Requires
+  **--hash**, **--new-verdict**, **--email** and **--comment** arguments.
 
  ``--report``
   Get analysis report for a previously uploaded sample.  The
@@ -131,7 +151,6 @@ DESCRIPTION
   The default is **xml**.
 
  ``--date`` *date*
-
   Start date for **--changed** query.  The format for the
   *date* argument is *YYYY-MM-DD*.
 
@@ -155,6 +174,18 @@ DESCRIPTION
   - Malware test file (**--testfile**)
 
     wildfire-test-pe-file.exe
+
+ ``--new-verdict`` *verdict*
+  The suggested verdict.  Can be specified as a string (*benign*,
+  *malware* or *grayware*) or an integer.
+
+ ``--email`` *address*
+  Notification e-mail address.
+
+ ``--comment`` *comment*
+  Explanation for the change request.  Can be up to 2048 bytes.
+  *comment* can be a string, a path to a file containing the comment or
+  **'-'** to specify the comment be read from *stdin*.
 
  ``-K`` *api_key*
   Specify the **api_key** used in API requests.  This can also be
@@ -313,10 +344,10 @@ SEE ALSO
  pan.wfapi
 
  WildFire Administrator's Guide
-  https://www.paloaltonetworks.com/documentation/61/wildfire/wf_admin.pdf.html
+  https://www.paloaltonetworks.com/documentation/70/wildfire/wf_admin.html
 
  WildFire API
-  https://www.paloaltonetworks.com/documentation/61/wildfire/wf_admin/wildfire-api.html
+  https://www.paloaltonetworks.com/documentation/70/wildfire/wf_admin/use-the-wildfire-api.html
 
 AUTHORS
 =======
