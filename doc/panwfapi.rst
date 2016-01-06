@@ -46,7 +46,8 @@ SYNOPSIS
     --comment comment     change request explanation
     --testfile            get sample malware test file
     --format format       report output format
-    --date date           start date for changed verdicts (YYYY-MM-DD)
+    --date date           start date for changed verdicts
+                          (YYYY-MM-DD or -days)
     --dst dst             save file to directory or path
     -K api_key            WildFire API key
     -h hostname           WildFire hostname
@@ -57,7 +58,7 @@ SYNOPSIS
     -t tag                .panrc tagname
     -T seconds            urlopen() timeout
     --http                use http URL scheme (default https)
-    --nocacloud           disable default cloud CA certificate verification
+    --ssl opt             SSL verify option: default|noverify|cacloud
     --cafile path         file containing CA certificates
     --capath path         directory of hashed certificate files
     --version             display version
@@ -152,7 +153,9 @@ DESCRIPTION
 
  ``--date`` *date*
   Start date for **--changed** query.  The format for the
-  *date* argument is *YYYY-MM-DD*.
+  *date* argument is *YYYY-MM-DD* or *-days* to specify a date
+  relative to the current day.  *0* can be also be used to specify
+  the current date.
 
  ``--dst`` *dst*
   Save file to the directory or path specified in *dst*.  By default
@@ -195,8 +198,8 @@ DESCRIPTION
   Specify the **hostname** used in API requests.  This can also be
   specified in a .panrc file using the ``hostname`` *varname*.
 
-  This is used to test alternate clouds (e.g.,
-  ``beta.wildfire.paloaltonetworks.com``).
+  This is used to specify an alternate cloud (e.g.,
+  ``beta.wildfire.paloaltonetworks.com``) or a WildFire appliance.
 
   The default is ``wildfire.paloaltonetworks.com``.
 
@@ -223,31 +226,32 @@ DESCRIPTION
   Use *http* URL scheme for API requests.  This can be used with the
   ``--testfile`` option to get a malware test file over HTTP.
 
- ``--nocacloud``
-  Disable default cloud CA SSL server certificate verification.
+ ``--ssl`` *opt*
+  Specify the type of SSL server certificate verification to be
+  performed.
 
-  By default SSL server certificate verification is performed using
-  the Go Daddy Class 2 Certification Authority Root Certificate which
-  is used by the WildFire cloud and is stored in the PanWFapi class.
-  ``--nocacloud`` can be used to disable verification for test clouds
-  or if the cloud CA changes.
+  ``noverify`` is used to disable SSL server certificate verification.
 
-  urlopen() only supports SSL server certificate verification in
-  Python version 3.2 and greater.
+  ``default`` is used to specify that no changes are made to the
+  default **ssl** module settings.
+
+  ``cacloud``, which is the default, specifies SSL server certificate
+  verification is performed using the Go Daddy Class 2 Certification
+  Authority Root Certificate which is used by the WildFire cloud and
+  is stored in the pan.wfapi module.
+
+  SSL server certificate verification is only performed in Python
+  version 2.7.9 and 3.4.3 and greater.
+
+  ``--ssl`` is ignored if ``--cafile`` or ``--capath`` are specified.
 
  ``--cafile`` *path*
-  Specify the ``cafile`` value for urlopen().  ``cafile`` is a file
-  containing CA certificates to be used for SSL server certificate
-  verification.
-  ``--cafile`` disables default cloud certificate verification.
-  ``--cafile`` is only supported in Python version 3.2 and greater.
+  ``cafile`` is a file containing CA certificates to be used for SSL
+   server certificate verification.
 
  ``--capath`` *path*
-  Specify the ``capath`` value for urlopen().  ``capath`` is a
-  directory of hashed certificate files to be used for SSL server
-  certificate verification.
-  ``--capath`` disables default cloud certificate verification.
-  ``--capath`` is only supported in Python version 3.2 and greater.
+  ``capath`` is a directory of hashed certificate files to be used for
+   SSL server certificate verification.
 
  ``--version``
   Display version.

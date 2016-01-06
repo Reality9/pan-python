@@ -59,13 +59,7 @@ _job_query_interval = 0.5
 
 
 class PanXapiError(Exception):
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        if self.msg is None:
-            return ''
-        return self.msg
+    pass
 
 
 class PanXapi:
@@ -834,6 +828,11 @@ class PanXapi:
         start_time = time.time()
 
         while True:
+            # sleep at the top of the loop so we don't poll
+            # immediately after commit
+            self._log(DEBUG2, 'sleep %.2f seconds', interval)
+            time.sleep(interval)
+
             try:
                 self.op(cmd=cmd, cmd_xml=True)
             except PanXapiError as msg:
@@ -854,9 +853,6 @@ class PanXapi:
                     time.time() > start_time + timeout):
                 raise PanXapiError('timeout waiting for ' +
                                    'job %s completion' % job.text)
-
-            self._log(DEBUG2, 'sleep %.2f seconds', interval)
-            time.sleep(interval)
 
     def op(self, cmd=None, vsys=None, cmd_xml=False, extra_qs=None):
         if cmd is not None and cmd_xml:
